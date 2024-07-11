@@ -1,3 +1,12 @@
+import tkinter as tk
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from tkinter import ttk
+from PIL import Image, ImageTk
+import cv2
+from tkinter import filedialog
+from PIL import Image, ImageTk
+import threading
 import cv2
 import numpy as np
 import os
@@ -5,7 +14,6 @@ import time
 
 
 def process_image(filename, **kwargs):
-    # Set default values for the function arguments
     max_dimension = kwargs.get("max_dimension", 1920)
     text_resolution = kwargs.get("text_resolution", 8)
     get_fill = kwargs.get("get_fill", True)
@@ -21,7 +29,7 @@ def process_image(filename, **kwargs):
     apply_threshold = kwargs.get("apply_threshold", True)
     kernel_size_sobel = kwargs.get("kernel_size_sobel", 7)
     apply_colour = kwargs.get("apply_colour", True)
-    colour_map = kwargs.get("colour_map", "white-black")
+    colour_map = kwargs.get("colour_map", "black-white")
     apply_bloom = kwargs.get("apply_bloom", True)
     bloom_blur_value = kwargs.get("bloom_blur_value", 10)
     bloom_gain = kwargs.get("bloom_gain", 1)
@@ -35,13 +43,13 @@ def process_image(filename, **kwargs):
     threshold_sharpness = kwargs.get("threshold_sharpness", 0)
     output_dir = kwargs.get("output_dir", "./ascii_output/")
     save = kwargs.get("save", False)
-    show = kwargs.get("show", False)
+    show = kwargs.get("show", True)
     only_dog = kwargs.get("only_dog", False)
     only_sobel = kwargs.get("only_sobel", False)
 
     if not save and not show:
         raise ValueError("Either 'save' or 'show' must be set to True")
-    # Open the image and convert to grayscale
+
     input_image = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
     if input_image is None:
         raise ValueError(f"Could not open or find the image '{filename}'")
@@ -53,7 +61,6 @@ def process_image(filename, **kwargs):
     ascii_fill_img, ascii_edge_img = None, None
 
     if get_fill:
-        # Create ASCII fill image
         ascii_fill_img = create_ascii_fill_image(input_image, text_resolution)
         image = ascii_fill_img
 
@@ -135,8 +142,7 @@ def process_image(filename, **kwargs):
         )
 
     if save:
-        os.makedirs(output_dir, exist_ok=True)  # Ensure the output directory exists
-        # Force the output filename to have a .png extension
+        os.makedirs(output_dir, exist_ok=True)
         output_ascii_filename = os.path.join(
             output_dir, os.path.splitext(os.path.basename(filename))[0] + ".png"
         )
@@ -144,12 +150,9 @@ def process_image(filename, **kwargs):
         print(f"ASCII art image saved as '{output_ascii_filename}'")
 
     end_time = time.time()
-    print(f"Processing time for '{'f'}': {end_time - start_time:.2f} seconds")
+    print(f"Processing time for '{filename}': {end_time - start_time:.2f} seconds")
 
-    if show:
-        cv2.imshow("ASCII Art", image)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+    return image
 
 
 def create_ascii_fill_image(image, text_resolution):
@@ -168,11 +171,9 @@ def create_ascii_fill_image(image, text_resolution):
 
     image_h, image_w = image.shape
 
-    # Calculate the new dimensions
     reduced_w = image_w // text_resolution
     reduced_h = image_h // text_resolution
 
-    # Maintain aspect ratio
     aspect_ratio = image_w / image_h
     if aspect_ratio > 1:
         reduced_w = reduced_w
@@ -181,30 +182,24 @@ def create_ascii_fill_image(image, text_resolution):
         reduced_h = reduced_h
         reduced_w = int(reduced_h * aspect_ratio)
 
-    # Resize the image
     image = cv2.resize(
         image, (int(reduced_w), int(reduced_h)), interpolation=cv2.INTER_AREA
     )
-    # Create a blank black image
+
     ascii_fill_img = np.zeros(
         (reduced_h * text_resolution, reduced_w * text_resolution), dtype=np.uint8
     )
 
-    # Get character indices based on pixel intensities
     char_indices = gray_scale_lookup[image]
 
-    # Place character images in the ascii_fill_img
     for i in range(len(fill_images)):
-        # Get mask where the char_index matches the current index
         mask = char_indices == i
 
         if not np.any(mask):
             continue
 
-        # Get the corresponding character image
         char_img = fill_images[i]
 
-        # Place the block in the ascii_fill_img
         y_coords, x_coords = np.where(mask)
         for y, x in zip(y_coords, x_coords):
             start_y, start_x = y * text_resolution, x * text_resolution
@@ -226,57 +221,38 @@ def diff_of_gaussiian(
     apply_clahe,
     apply_threshold,
 ):
-    # Sigm1 1 for dog
-    # Sigma2 = Sigma_factor * Sigma_Dog
-    # Kernel size = Kernel_FACTOR_DOG * Sigma_Dog
-
-    # Set sigma values
     sigma1 = sigma_dog
-    sigma2 = (
-        sigma_factor * sigma1
-    )  # Larger sigma is typically 1.6 times the smaller sigma
+    sigma2 = sigma_factor * sigma1
 
-    # Calculate kernel sizes (make sure they are odd)
     k_factor = kernel_factor_dog
-    k_size1 = (
-        int(k_factor * sigma1) | 1
-    )  # Bitwise OR with 1 ensures the kernel size is odd
+    k_size1 = int(k_factor * sigma1) | 1
     k_size2 = int(k_factor * sigma2) | 1
 
-    # Apply GaussianBlur at two different scales
     blur1 = cv2.GaussianBlur(image, (k_size1, k_size1), sigma1)
     blur2 = cv2.multiply(np.ones_like(image) * (1 + tau_dog) , cv2.GaussianBlur(image, (k_size2, k_size2), sigma2))
 
-    # Compute the Difference of Gaussians
     dog = cv2.subtract(blur1, blur2)
 
     if apply_normalize:
-        # Normalize the DoG image to the range [0, 255]
         dog_normalized = cv2.normalize(dog, None, 0, 255, cv2.NORM_MINMAX)
         dog = np.uint8(dog_normalized)
 
     if apply_clahe:
-        # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
         clahe = cv2.createCLAHE(clipLimit=clahe_clip_limit, tileGridSize=(8, 8))
         dog = clahe.apply(dog)
 
     if apply_threshold:
-        thresh = contrast_threshold_dog  # Define the threshold value
-        dog = np.where(dog > thresh, 255.0, 0.0)  # Apply the threshold
-
-    # Display the results
+        thresh = contrast_threshold_dog
+        dog = np.where(dog > thresh, 255.0, 0.0)
 
     return dog
 
 
 def sobel_filter(image, kernel_size_sobel):
-
-    # Apply Sobel filter in x and y directions
     ksize = int(kernel_size_sobel) | 1
     sobelx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=ksize)
     sobely = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=ksize)
 
-    # Calculate magnitude and angle of gradients
     sobel_magnitude = cv2.magnitude(sobelx, sobely)
     sobel_angle = np.rad2deg(np.arctan2(sobely, sobelx))
 
@@ -303,11 +279,9 @@ def create_ascii_edge_image(
     sobel_angle = np.where(sobel_magnitude != 0, sobel_angle, np.nan)
     image_h, image_w = image.shape
 
-    # Calculate the new dimensions
     reduced_w = image_w // text_resolution
     reduced_h = image_h // text_resolution
 
-    # Maintain aspect ratio
     aspect_ratio = image_w / image_h
     if aspect_ratio > 1:
         reduced_w = reduced_w
@@ -316,7 +290,6 @@ def create_ascii_edge_image(
         reduced_h = reduced_h
         reduced_w = int(reduced_h * aspect_ratio)
 
-    # Function to determine edge direction based on angle
     def direction_threshold(theta):
         if np.isnan(theta):
             return 0
@@ -327,30 +300,25 @@ def create_ascii_edge_image(
             0.0 <= abstheta < 0.0 + angle_tolerance
             or 180 - angle_tolerance <= abstheta <= 180.0
         ):
-            return 1  # VERTICAL
+            return 1
         elif 90 - angle_tolerance <= abstheta < 90 + angle_tolerance:
-            return 2  # HORIZONTAL
+            return 2
         elif 0.0 + angle_tolerance <= abstheta < 90 - angle_tolerance:
-            return 3 if np.sign(theta) > 0 else 4  # DIAGONAL 1
+            return 3 if np.sign(theta) > 0 else 4
         elif 90 + angle_tolerance < abstheta < 180 - angle_tolerance:
-            return 4 if np.sign(theta) > 0 else 3  # DIAGONAL 2
+            return 4 if np.sign(theta) > 0 else 3
 
-    # Vectorize the threshold function for efficient element-wise processing
     vectorized_threshold = np.vectorize(direction_threshold)
     edge_value = vectorized_threshold(sobel_angle)
 
-    # Function to calculate the most frequent direction in an 8x8 grid
-
     def most_frequent_direction(grid):
-        hist, _ = np.histogram(grid, bins=np.arange(6))  # bins=[0, 1, 2, 3, 4, 5]
+        hist, _ = np.histogram(grid, bins=np.arange(6))
 
         if hist.sum() > histogram_threshold_sobel:
-
-            return np.argmax(hist)  # Matching max frequency with edge
+            return np.argmax(hist)
         else:
             return 0
 
-    # Create the ASCII art image
     ascii_img = np.zeros((image_h, image_w), dtype=np.uint8)
     for y in range(reduced_h):
         for x in range(reduced_w):
@@ -363,7 +331,7 @@ def create_ascii_edge_image(
             direction = most_frequent_direction(grid)
 
             char_index = direction
-            if char_index < len(edge_char_images):  # Ensure index is within range
+            if char_index < len(edge_char_images):
                 char_img = edge_char_images[char_index]
                 if char_img is not None and char_img.shape == (
                     text_resolution,
@@ -371,12 +339,10 @@ def create_ascii_edge_image(
                 ):
                     ascii_img[start_y:end_y, start_x:end_x] = char_img
 
-    # Save the ASCII art image
     return ascii_img
 
 
 def combine_fill_edges(ascii_fill_img, ascii_edge_img, text_resolution):
-
     image_w, image_h = ascii_fill_img.shape
     for y in range(image_h // text_resolution):
         for x in range(image_w // text_resolution):
@@ -396,8 +362,6 @@ def combine_fill_edges(ascii_fill_img, ascii_edge_img, text_resolution):
 
 
 def downscale_image(image, max_dim):
-
-    # Resize the image while preserving aspect ratio
     height, width = image.shape
     if max(width, height) > max_dim:
         if width > height:
@@ -414,7 +378,6 @@ def downscale_image(image, max_dim):
 
 
 def add_color(image, color_map="purple-salmon"):
-
     colour_map_hex = {
         "black-white": ("#000000", "#FFFFFF"),
         "white-black": ("#FFFFFF", "#000000"),
@@ -423,16 +386,13 @@ def add_color(image, color_map="purple-salmon"):
         "purple-salmon": ("#180a1c", "#e05964"),
         "darkblue-white": ("#1f1735", "#fffcff"),
     }
-    # Define colors
 
     hex_to_bgr = lambda hex_color: tuple(
         int(hex_color[i : i + 2], 16) for i in (5, 3, 1)
     )
 
-    # Create an RGB image array with the same height and width as the grayscale image
     color_image = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
 
-    # Map black (0) to green and white (255) to pink
     color_image[image == 0] = hex_to_bgr(colour_map_hex[color_map][0])
     color_image[image == 255] = hex_to_bgr(colour_map_hex[color_map][1])
 
@@ -440,35 +400,24 @@ def add_color(image, color_map="purple-salmon"):
 
 
 def add_bloom(image, bloom_blur_value, bloom_gain):
+    blur_value = bloom_blur_value
+    gain = bloom_gain
 
-    blur_value = bloom_blur_value  # bloom smoothness 10s
-    gain = bloom_gain  # bloom gain in intensity 1
-
-    # blur
     blur = cv2.GaussianBlur(image, (0, 0), sigmaX=blur_value, sigmaY=blur_value)
-    # blend blur and image using gain on blur
     result = cv2.addWeighted(image, 1, blur, gain, 0)
 
     return result
 
 
 def add_contrast(image, contrast_gamma, contrast_saturation):
-
-    # Convert the image to float32 for processing
     hdr_image = image.astype(np.float32) / 255.0
 
-    # Create a tone mapping object (you can choose different algorithms)
-    tonemap = cv2.createTonemapDrago(
-        contrast_gamma, contrast_saturation
-    )  # Parameters: gamma, saturation
+    tonemap = cv2.createTonemapDrago(contrast_gamma, contrast_saturation)
 
-    # Apply tone mapping
     ldr_tonemapped = tonemap.process(hdr_image)
 
-    # Check for NaN values and replace them with 0
     ldr_tonemapped = np.nan_to_num(ldr_tonemapped)
 
-    # Convert the tone-mapped image back to 8-bit format
     ldr_tonemapped = np.clip(ldr_tonemapped * 255, 0, 255).astype("uint8")
 
     return ldr_tonemapped
@@ -477,7 +426,6 @@ def add_contrast(image, contrast_gamma, contrast_saturation):
 def add_sharpness(
     image, kernel_size_sharpness, sigma_sharpness, amount_sharpness, threshold_sharpness
 ):
-    """Return a sharpened version of the image, using an unsharp mask."""
     blurred = cv2.GaussianBlur(
         image,
         (kernel_size_sharpness, kernel_size_sharpness),
@@ -494,48 +442,248 @@ def add_sharpness(
     return sharpened
 
 
-def add_depth(image):
-    pass
+class ScrollableFrame(ttk.Frame):
+    def __init__(self, container, *args, **kwargs):
+        super().__init__(container, *args, **kwargs)
+        canvas = tk.Canvas(self)
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        self.scrollable_frame = ttk.Frame(canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
 
-def crt_effect(image):
-    pass
+class ImageProcessingApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Image Processing Application")
+        self.geometry("1200x800")
+
+        # Initialize variables
+        self.current_image = None
+        self.processing_label = None
+        self.parameter_entries = {}
+        self.image_filename = None
+
+        # Define parameters
+        self.PARAMETERS = {
+            "max_dimension": 1920,
+            "text_resolution": 8,
+            "get_fill": True,
+            "get_edges": True,
+            "sigma_dog": 3,
+            "sigma_factor": 1.6,
+            "kernel_factor_dog": 6,
+            "tau_dog": 0,
+            "clahe_clip_limit": 2,
+            "contrast_threshold_dog": 25,
+            "apply_normalize": True,
+            "apply_clahe": True,
+            "apply_threshold": True,
+            "kernel_size_sobel": 7,
+            "apply_colour": True,
+            "colour_map": "black-white",
+            "apply_bloom": True,
+            "bloom_blur_value": 10,
+            "bloom_gain": 1,
+            "apply_contrast": True,
+            "contrast_gamma": 0.2,
+            "contrast_saturation": 0.5,
+            "apply_sharpness": True,
+            "kernel_size_sharpness": 5,
+            "sigma_sharpness": 1.0,
+            "amount_sharpness": 1.0,
+            "threshold_sharpness": 0,
+            "output_dir": "./ascii_output/",
+            "save": False,
+            "show": True,
+            "only_dog": False,
+            "only_sobel": False,
+        }
+
+        # Create main canvas to display image
+        self.canvas = tk.Canvas(self, bg="gray")
+        self.canvas.pack(padx=10, pady=10, side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Placeholder for the image
+        self.image_item = self.canvas.create_image(0, 0, anchor=tk.NW)
+
+        # Frame for parameter controls
+        self.parameters_frame = tk.Frame(self)
+        self.parameters_frame.pack(padx=10, pady=10, side=tk.LEFT, fill=tk.Y)
+
+        # Label for processing indication
+
+        # Create parameter inputs
+        self.create_parameter_inputs()
+
+        # Button to load a new image
+        self.load_button = tk.Button(
+            self.parameters_frame, text="Load Image", command=self.open_file
+        )
+        self.load_button.grid(
+            row=len(self.PARAMETERS),
+            column=0,
+            columnspan=2,
+            padx=5,
+            pady=10,
+            sticky=tk.W + tk.E,
+        )
+
+        # Button to save optimal parameters
+        self.save_button = tk.Button(
+            self.parameters_frame,
+            text="Save Optimal Parameters",
+            command=self.save_parameters,
+        )
+        self.save_button.grid(
+            row=len(self.PARAMETERS) + 1,
+            column=0,
+            columnspan=2,
+            padx=5,
+            pady=10,
+            sticky=tk.W + tk.E,
+        )
+
+        # Button to process image
+        self.process_button = tk.Button(
+            self.parameters_frame,
+            text="Process Image",
+            command=self.process_image_with_parameters,
+        )
+        self.process_button.grid(
+            row=len(self.PARAMETERS) + 2,
+            column=0,
+            columnspan=2,
+            padx=5,
+            pady=10,
+            sticky=tk.W + tk.E,
+        )
+
+        # Label for processing indication
+        self.processing_label = tk.Label(
+            self.parameters_frame,
+            text="Processing...",
+            font=("Arial", 20),
+            fg="red",
+            bg="gray",
+        )
+        self.processing_label.grid(
+            row=len(self.PARAMETERS) + 3,
+            column=0,
+            columnspan=2,
+            padx=5,
+            pady=10,
+            sticky=tk.W + tk.E,
+        )
+        
+    def create_parameter_inputs(self):
+        row = 0
+        col = 0
+        for i, (param, default_value) in enumerate(self.PARAMETERS.items()):
+            if i % (len(self.PARAMETERS) // 2) == 0 and i != 0:
+                row = 0
+                col += 2
+
+            label = tk.Label(
+                self.parameters_frame, text=param.replace("_", " ").title()
+            )
+            label.grid(row=row, column=col, padx=5, pady=5, sticky=tk.W)
+
+            if isinstance(default_value, bool):
+                var = tk.IntVar(value=int(default_value))
+                entry = tk.Checkbutton(self.parameters_frame, variable=var)
+            else:
+                var = tk.StringVar(value=str(default_value))
+                entry = tk.Entry(self.parameters_frame, textvariable=var)
+
+            entry.grid(row=row, column=col + 1, padx=5, pady=5, sticky=tk.W)
+            self.parameter_entries[param] = var
+            row += 1
+
+    def open_file(self):
+        filename = filedialog.askopenfilename(
+            filetypes=[("Image files", "*.png;*.jpg;*.jpeg")]
+        )
+        if filename:
+            image = cv2.imread(filename)
+            if image is not None:
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                self.update_image_display(Image.fromarray(image))
+                self.image_filename = filename
+                for param, var in self.parameter_entries.items():
+                    if isinstance(var, tk.StringVar):
+                        var.set(str(self.PARAMETERS[param]))
+                    elif isinstance(var, tk.IntVar):
+                        var.set(int(self.PARAMETERS[param]))
+            else:
+                messagebox.showerror("Error", "Failed to open the image file.")
+
+    def update_image_display(self, image):
+        canvas_width = self.canvas.winfo_width()
+        canvas_height = self.canvas.winfo_height()
+        img_width, img_height = image.size
+
+        scale = min(canvas_width / img_width, canvas_height / img_height)
+        resized_image = image.resize((int(img_width * scale), int(img_height * scale)))
+
+        self.current_image = ImageTk.PhotoImage(resized_image)
+        self.canvas.itemconfig(self.image_item, image=self.current_image)
+        self.canvas.config(scrollregion=self.canvas.bbox(tk.ALL))
+
+    def save_parameters(self):
+        optimal_params = {}
+        for param, var in self.parameter_entries.items():
+            if isinstance(var, tk.StringVar):
+                optimal_params[param] = var.get()
+            elif isinstance(var, tk.IntVar):
+                optimal_params[param] = bool(int(var.get()))
+
+        # Example: Save optimal_params to a file or perform any other operation
+        print("Optimal Parameters:", optimal_params)
+
+        with open("optimal_params.txt", "w") as f:
+            for key, value in optimal_params.items():
+                f.write(f"{key}={value}\n")
+        messagebox.showinfo("Saved!")
+
+    def process_image_with_parameters(self):
+        try:
+            self.processing_label.grid()
+
+            kwargs = {}
+            for param, var in self.parameter_entries.items():
+                if isinstance(var, tk.StringVar):
+                    value = var.get()
+                    if value.isdigit():
+                        kwargs[param] = int(value)
+                    else:
+                        try:
+                            kwargs[param] = float(value)
+                        except ValueError:
+                            kwargs[param] = value
+                elif isinstance(var, tk.IntVar):
+                    kwargs[param] = bool(int(var.get()))
+
+            if self.image_filename:
+                processed_image = process_image(self.image_filename, **kwargs)
+                self.update_image_display(Image.fromarray(processed_image))
+
+        except Exception as e:
+            messagebox.showerror("Error-process img with para", str(e))
+
+        finally:
+            self.processing_label.grid_remove()
 
 
 if __name__ == "__main__":
-
-    process_image(
-        filename="images/img.png",
-        max_dimension=1920,
-        text_resolution=8,
-        get_fill=True,
-        get_edges=True,
-        sigma_dog=3,
-        sigma_factor=1.4,
-        kernel_factor_dog=2,
-        tau_dog=0,
-        clahe_clip_limit=2,
-        contrast_threshold_dog=5,
-        apply_normalize=True,
-        apply_clahe=False,
-        apply_threshold=True,
-        kernel_size_sobel=7,
-        apply_colour=True,
-        colour_map="black-white",
-        apply_bloom=False,
-        bloom_blur_value=10,
-        bloom_gain=1,
-        apply_contrast=False,
-        contrast_gamma=0.2,
-        contrast_saturation=0.5,
-        apply_sharpness=False,
-        kernel_size_sharpness=5,
-        sigma_sharpness=1.0,
-        amount_sharpness=1.0,
-        threshold_sharpness=0,
-        output_dir="./ascii_output/",
-        save=False,
-        show=True,
-        only_dog=True,  # Set to True to only get the DoG image, must set fill and edge to False
-        only_sobel=True,  # Set to True to only get the Sobel image, must set fill and edge to False
-    )
+    app = ImageProcessingApp()
+    app.mainloop()
