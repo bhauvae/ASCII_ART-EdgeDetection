@@ -3,14 +3,100 @@ import numpy as np
 import os
 import time
 
-# Define the grayscale characters from darkest to lightest
 
 
-TEXT_RESOLUTION = 8
+
+def process_image(
+    filename,
+    max_dimension,
+    text_resolution,
+    get_fill,
+    get_edges,
+    sigma_dog,
+    sigma_factor,
+    kernel_factor_dog,
+    clahe_clip_limit,
+    contrast_threshold_dog,
+    apply_normalize,
+    apply_clahe,
+    apply_contrast_threshold,
+    kernel_size_sobel,
+    apply_colour,
+    colour_map,
+    apply_bloom,
+    bloom_blur_value,
+    bloom_gain,
+    apply_contrast,
+    contrast_gamma,
+    contrast_saturation,
+    output_dir="./ascii_output/",
+    save=True,
+    show=False,
+):
+
+    # Open the image and convert to grayscale
+    input_image = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
+    if input_image is None:
+        raise ValueError(f"Could not open or find the image '{filename}'")
+
+    start_time = time.time()
+
+    input_image = downscale_image(input_image, max_dimension)
+
+    if get_fill:
+        # Create ASCII fill image
+        ascii_fill_img = create_ascii_fill_image(input_image, text_resolution)
+
+    if get_edges:
+        dog = diff_of_gaussiian(
+            input_image,
+            sigma_dog,
+            sigma_factor,
+            kernel_factor_dog,
+            clahe_clip_limit,
+            contrast_threshold_dog,
+            apply_normalize,
+            apply_clahe,
+            apply_contrast_threshold,
+        )
+        sobel_magnitude, sobel_angle = sobel_filter(dog, kernel_size_sobel)
+
+        ascii_edge_img = create_ascii_edge_image(
+            input_image, sobel_angle, sobel_magnitude, text_resolution
+        )
+
+    ascii_img = combine_fill_edges(ascii_fill_img, ascii_edge_img, text_resolution)
+
+    if apply_colour:
+        ascii_img = add_color(ascii_img, colour_map)
+
+    if apply_bloom:
+        ascii_img = add_bloom(ascii_img, bloom_blur_value, bloom_gain)
+
+    if apply_contrast:
+        ascii_img = add_contrast(ascii_img, contrast_gamma, contrast_saturation)
+
+    if save:
+        os.makedirs(output_dir, exist_ok=True)  # Ensure the output directory exists
+        # Force the output filename to have a .png extension
+        output_ascii_filename = os.path.join(
+            output_dir, os.path.splitext(os.path.basename(filename))[0] + ".png"
+        )
+        cv2.imwrite(output_ascii_filename, ascii_img)
+        print(f"ASCII art image saved as '{output_ascii_filename}'")
+
+    end_time = time.time()
+    print(f"Processing time for '{'f'}': {end_time - start_time:.2f} seconds")
+
+    if show:
+        cv2.imshow("ASCII Art", ascii_img)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
 
-def create_ascii_fill_image(image):
+def create_ascii_fill_image(image, text_resolution=8):
     GRAY_SCALE = " .;coP0?@█"
+
     gray_scale_lookup = np.array(
         [i for i in range(10) for _ in range(26)], dtype=np.uint8
     )[4:260]
@@ -24,8 +110,8 @@ def create_ascii_fill_image(image):
     image_h, image_w = image.shape
 
     # Calculate the new dimensions
-    reduced_w = image_w // TEXT_RESOLUTION
-    reduced_h = image_h // TEXT_RESOLUTION
+    reduced_w = image_w // text_resolution
+    reduced_h = image_h // text_resolution
 
     # Maintain aspect ratio
     aspect_ratio = image_w / image_h
@@ -40,7 +126,7 @@ def create_ascii_fill_image(image):
     image = cv2.resize(image, (reduced_w, reduced_h), interpolation=cv2.INTER_AREA)
     # Create a blank black image
     ascii_fill_img = np.zeros(
-        (reduced_h * TEXT_RESOLUTION, reduced_w * TEXT_RESOLUTION), dtype=np.uint8
+        (reduced_h * text_resolution, reduced_w * text_resolution), dtype=np.uint8
     )
 
     # Get character indices based on pixel intensities
@@ -60,8 +146,8 @@ def create_ascii_fill_image(image):
         # Place the block in the ascii_fill_img
         y_coords, x_coords = np.where(mask)
         for y, x in zip(y_coords, x_coords):
-            start_y, start_x = y * TEXT_RESOLUTION, x * TEXT_RESOLUTION
-            end_y, end_x = start_y + TEXT_RESOLUTION, start_x + TEXT_RESOLUTION
+            start_y, start_x = y * text_resolution, x * text_resolution
+            end_y, end_x = start_y + text_resolution, start_x + text_resolution
             ascii_fill_img[start_y:end_y, start_x:end_x] = char_img
 
     return ascii_fill_img
@@ -141,6 +227,7 @@ def create_ascii_edge_image(
     sobel_magnitude,
     histogram_threshold_sobel=5,
     edge_angle_range=10,
+    text_resolution=8,
 ):
     EDGES_GRAY_SCALE = r" |_/\\"
 
@@ -155,8 +242,8 @@ def create_ascii_edge_image(
     image_h, image_w = image.shape
 
     # Calculate the new dimensions
-    reduced_w = image_w // TEXT_RESOLUTION
-    reduced_h = image_h // TEXT_RESOLUTION
+    reduced_w = image_w // text_resolution
+    reduced_h = image_h // text_resolution
 
     # Maintain aspect ratio
     aspect_ratio = image_w / image_h
@@ -205,10 +292,10 @@ def create_ascii_edge_image(
     ascii_img = np.zeros((image_h, image_w), dtype=np.uint8)
     for y in range(reduced_h):
         for x in range(reduced_w):
-            start_y = y * TEXT_RESOLUTION
-            end_y = (y + 1) * TEXT_RESOLUTION
-            start_x = x * TEXT_RESOLUTION
-            end_x = (x + 1) * TEXT_RESOLUTION
+            start_y = y * text_resolution
+            end_y = (y + 1) * text_resolution
+            start_x = x * text_resolution
+            end_x = (x + 1) * text_resolution
 
             grid = edge_value[start_y:end_y, start_x:end_x]
             direction = most_frequent_direction(grid)
@@ -217,8 +304,8 @@ def create_ascii_edge_image(
             if char_index < len(edge_char_images):  # Ensure index is within range
                 char_img = edge_char_images[char_index]
                 if char_img is not None and char_img.shape == (
-                    TEXT_RESOLUTION,
-                    TEXT_RESOLUTION,
+                    text_resolution,
+                    text_resolution,
                 ):
                     ascii_img[start_y:end_y, start_x:end_x] = char_img
 
@@ -226,7 +313,7 @@ def create_ascii_edge_image(
     return ascii_img
 
 
-def combine_fill_edges(ascii_fill_img, ascii_edge_img):
+def combine_fill_edges(ascii_fill_img, ascii_edge_img, text_resolution=8):
     if ascii_edge_img is None:
         return ascii_fill_img
     elif ascii_fill_img is None:
@@ -234,12 +321,12 @@ def combine_fill_edges(ascii_fill_img, ascii_edge_img):
 
     else:
         image_w, image_h = ascii_fill_img.shape
-        for y in range(image_h // TEXT_RESOLUTION):
-            for x in range(image_w // TEXT_RESOLUTION):
-                start_y = y * TEXT_RESOLUTION
-                end_y = (y + 1) * TEXT_RESOLUTION
-                start_x = x * TEXT_RESOLUTION
-                end_x = (x + 1) * TEXT_RESOLUTION
+        for y in range(image_h // text_resolution):
+            for x in range(image_w // text_resolution):
+                start_y = y * text_resolution
+                end_y = (y + 1) * text_resolution
+                start_x = x * text_resolution
+                end_x = (x + 1) * text_resolution
 
                 if np.all(ascii_edge_img[start_y:end_y, start_x:end_x] == 0):
                     continue
@@ -270,6 +357,8 @@ def downscale_image(image, max_dim=1920):
 def add_color(image, color_map="purple-salmon"):
 
     colour_map_hex = {
+        "black-white": ("#000000", "#FFFFFF"),
+        "white-black": ("#FFFFFF", "#000000"),
         "blue-green": ("#0A174E", "#F5D042"),
         "hacker-man": ("#120d13", "#29ff2a"),
         "purple-salmon": ("#180a1c", "#e05964"),
@@ -317,6 +406,9 @@ def add_contrast(image, contrast_gamma=0.2, contrast_saturation=0.5):
     # Apply tone mapping
     ldr_tonemapped = tonemap.process(hdr_image)
 
+    # Check for NaN values and replace them with 0
+    ldr_tonemapped = np.nan_to_num(ldr_tonemapped)
+
     # Convert the tone-mapped image back to 8-bit format
     ldr_tonemapped = np.clip(ldr_tonemapped * 255, 0, 255).astype("uint8")
 
@@ -345,98 +437,12 @@ def crt_effect(image):
     pass
 
 
-def process_image(
-    filename,
-    max_dimension,
-    get_fill,
-    get_edges,
-    sigma_dog,
-    sigma_factor,
-    kernel_factor_dog,
-    clahe_clip_limit,
-    contrast_threshold_dog,
-    apply_normalize,
-    apply_clahe,
-    apply_contrast_threshold,
-    kernel_size_sobel,
-    apply_colour,
-    colour_map,
-    apply_bloom,
-    bloom_blur_value,
-    bloom_gain,
-    apply_contrast,
-    contrast_gamma,
-    contrast_saturation,
-    output_dir="./ascii_output/",
-    save=True,
-    show=False,
-):
-
-    # Open the image and convert to grayscale
-    input_image = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
-    if input_image is None:
-        raise ValueError(f"Could not open or find the image '{filename}'")
-
-    start_time = time.time()
-
-    input_image = downscale_image(input_image, max_dimension)
-
-    if get_fill:
-        # Create ASCII fill image
-        ascii_fill_img = create_ascii_fill_image(input_image)
-
-    if get_edges:
-        dog = diff_of_gaussiian(
-            input_image,
-            sigma_dog,
-            sigma_factor,
-            kernel_factor_dog,
-            clahe_clip_limit,
-            contrast_threshold_dog,
-            apply_normalize,
-            apply_clahe,
-            apply_contrast_threshold,
-        )
-        sobel_magnitude, sobel_angle = sobel_filter(dog, kernel_size_sobel)
-
-        ascii_edge_img = create_ascii_edge_image(
-            input_image, sobel_angle, sobel_magnitude
-        )
-
-    ascii_img = combine_fill_edges(ascii_fill_img, ascii_edge_img)
-
-    if apply_colour:
-        ascii_img = add_color(ascii_img, colour_map)
-
-    if apply_bloom:
-        ascii_img = add_bloom(ascii_img, bloom_blur_value, bloom_gain)
-
-    if apply_contrast:
-        ascii_img = add_contrast(ascii_img, contrast_gamma, contrast_saturation)
-
-    if save:
-        os.makedirs(output_dir, exist_ok=True)  # Ensure the output directory exists
-        # Force the output filename to have a .png extension
-        output_ascii_filename = os.path.join(
-            output_dir, os.path.splitext(os.path.basename(filename))[0] + ".png"
-        )
-        cv2.imwrite(output_ascii_filename, ascii_img)
-        print(f"ASCII art image saved as '{output_ascii_filename}'")
-
-    end_time = time.time()
-    print(f"Processing time for '{'f'}': {end_time - start_time:.2f} seconds")
-
-    if show:
-        cv2.imshow("ASCII Art", ascii_img)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-
-
 if __name__ == "__main__":
 
     process_image(
         filename="test.jpg",
         max_dimension=1920,
+        text_resolution=8,
         get_fill=True,
         get_edges=True,
         sigma_dog=3,
@@ -449,14 +455,14 @@ if __name__ == "__main__":
         apply_contrast_threshold=True,
         kernel_size_sobel=7,
         apply_colour=True,
-        colour_map="hacker-man",
+        colour_map="white-black",
         apply_bloom=True,
         bloom_blur_value=10,
         bloom_gain=1,
-        apply_contrast=False,
+        apply_contrast=True,
         contrast_gamma=0.2,
         contrast_saturation=0.5,
         output_dir="./ascii_output/",
-        save=False,
-        show=True,
+        save=True,
+        show=False,
     )
