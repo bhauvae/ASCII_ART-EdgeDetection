@@ -26,6 +26,8 @@ def ascii_filter(filename, **kwargs):
     apply_clahe = kwargs.get("apply_clahe", True)
     apply_threshold = kwargs.get("apply_threshold", True)
     kernel_size_sobel = kwargs.get("kernel_size_sobel", 7)
+    histogram_threshold_sobel = kwargs.get("histogram_threshold_sobel", 10)
+    edge_angle_tolerance = kwargs.get("edge_angle_threshold", 10)
     apply_colour = kwargs.get("apply_colour", True)
     colour_map = kwargs.get("colour_map", "white-black")
     apply_bloom = kwargs.get("apply_bloom", True)
@@ -74,7 +76,12 @@ def ascii_filter(filename, **kwargs):
         sobel_magnitude, sobel_angle = sobel_filter(dog, kernel_size_sobel)
 
         ascii_edge_img = create_ascii_edge_image(
-            input_image, sobel_angle, sobel_magnitude, text_resolution
+            input_image,
+            sobel_angle,
+            sobel_magnitude,
+            text_resolution,
+            histogram_threshold_sobel,
+            edge_angle_tolerance,
         )
         image = ascii_edge_img
 
@@ -279,9 +286,9 @@ def create_ascii_edge_image(
     image,
     sobel_angle,
     sobel_magnitude,
-    histogram_threshold_sobel=5,
-    edge_angle_range=10,
-    text_resolution=8,
+    text_resolution,
+    histogram_threshold_sobel,
+    edge_angle_tolerance,
 ):
     EDGES_GRAY_SCALE = r" |_/\\"
 
@@ -313,7 +320,7 @@ def create_ascii_edge_image(
         if np.isnan(theta):
             return 0
 
-        angle_tolerance = edge_angle_range
+        angle_tolerance = edge_angle_tolerance
         abstheta = np.abs(theta)
         if (
             0.0 <= abstheta < 0.0 + angle_tolerance
@@ -405,7 +412,7 @@ def downscale_image(image, max_dim):
     return image
 
 
-def add_color(image, color_map="purple-salmon"):
+def add_color(image, color_map):
 
     colour_map_hex = {
         "black-white": ("#000000", "#FFFFFF"),
@@ -498,7 +505,7 @@ def crt_effect(image):
     pass
 
 
-def process_gif_file(input_gif_path, output_dir="output", affix="-crt", **kwargs):
+def process_gif_file(input_gif_path, output_dir="output", affix="-ascii", **kwargs):
     """
     Process a GIF file by extracting its frames, applying effects to each frame with `process_image`,
     and reassembling the frames into a new GIF file.
@@ -632,7 +639,7 @@ def process_image(image_path, output_dir="output", affix="-ascii", **kwargs):
 
     return output_path
 
-
+# TODO ADD VIDEO Processing
 def process_video_file(input_video_path, output_video_filename, **kwargs):
     """
     Process a video file by extracting its frames, applying effects to each frame,
@@ -760,22 +767,25 @@ def process_input(input_path, save, show, **kwargs):
         else:
             print("Unsupported file format. Show only supported for images")
 
+
 if __name__ == "__main__":
 
     process_input(
         input_path="images/img.png",
+        save=False,
+        show=True,
         max_dimension=1920,
         text_resolution=8,
         get_fill=True,
         get_edges=True,
         sigma_dog=3,
-        sigma_factor=1.4,
-        kernel_factor_dog=2,
+        sigma_factor=1.6,
+        kernel_factor_dog=6,
         tau_dog=0,
         clahe_clip_limit=2,
-        contrast_threshold_dog=5,
+        contrast_threshold_dog=25,
         apply_normalize=True,
-        apply_clahe=False,
+        apply_clahe=True,
         apply_threshold=True,
         kernel_size_sobel=7,
         apply_colour=True,
@@ -791,9 +801,6 @@ if __name__ == "__main__":
         sigma_sharpness=1.0,
         amount_sharpness=1.0,
         threshold_sharpness=0,
-        output_dir="./ascii_output/",
-        save=False,
-        show=True,
-        only_dog=True,  # Set to True to only get the DoG image, must set fill and edge to False
-        only_sobel=True,  # Set to True to only get the Sobel image, must set fill and edge to False
+        only_dog=False,  # Set to True to only get the DoG image, must set fill and edge to False
+        only_sobel=False,  # Set to True to only get the Sobel image, must set fill and edge to False
     )
