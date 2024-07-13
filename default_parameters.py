@@ -1,0 +1,38 @@
+
+DEFAULT_PARAMETERS = {
+    "max_dimension": 1920,
+    "text_resolution": 8,
+    "get_fill": True,
+    "get_edges": True,
+    "apply_clahe": True,
+    "clahe_clip_limit": 2,
+    "sigma_dog": 3,
+    "sigma_factor": 1.6,
+    "kernel_factor_dog": 6,
+    "tau_dog": 0,
+    
+    "contrast_threshold_dog": 25,
+    "apply_normalize": True,
+    
+    "apply_threshold": True,
+    "kernel_size_sobel": 7,
+    "histogram_threshold_sobel": 10,
+    "edge_angle_tolerance": 10,
+    "apply_colour": True,
+    "colour_map": "black-white",
+    "apply_bloom": True,
+    "bloom_blur_value": 10,
+    "bloom_gain": 1,
+    "apply_contrast": True,
+    "contrast_gamma": 0.2,
+    "contrast_saturation": 0.5,
+    "apply_sharpness": True,
+    "kernel_size_sharpness": 5,
+    "sigma_sharpness": 1.0,
+    "amount_sharpness": 1.0,
+    "threshold_sharpness": 0,
+    "apply_neon": True,
+    "neon_base_color": "base",
+    "only_dog": False,
+    "only_sobel": False
+}

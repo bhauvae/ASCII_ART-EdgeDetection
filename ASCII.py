@@ -8,41 +8,61 @@ import shutil
 import tempfile
 import glob
 import multiprocessing
+from default_parameters import DEFAULT_PARAMETERS
 
 
 def ascii_filter(filename, **kwargs):
-    # Set default values for the function arguments
-    max_dimension = kwargs.get("max_dimension", 1920)
-    text_resolution = kwargs.get("text_resolution", 8)
-    get_fill = kwargs.get("get_fill", True)
-    get_edges = kwargs.get("get_edges", True)
-    sigma_dog = kwargs.get("sigma_dog", 3)
-    sigma_factor = kwargs.get("sigma_factor", 1.6)
-    kernel_factor_dog = kwargs.get("kernel_factor_dog", 6)
-    tau_dog = kwargs.get("tau_dog", 0)
-    clahe_clip_limit = kwargs.get("clahe_clip_limit", 2)
-    contrast_threshold_dog = kwargs.get("contrast_threshold_dog", 25)
-    apply_normalize = kwargs.get("apply_normalize", True)
-    apply_clahe = kwargs.get("apply_clahe", True)
-    apply_threshold = kwargs.get("apply_threshold", True)
-    kernel_size_sobel = kwargs.get("kernel_size_sobel", 7)
-    histogram_threshold_sobel = kwargs.get("histogram_threshold_sobel", 10)
-    edge_angle_tolerance = kwargs.get("edge_angle_threshold", 10)
-    apply_colour = kwargs.get("apply_colour", True)
-    colour_map = kwargs.get("colour_map", "white-black")
-    apply_bloom = kwargs.get("apply_bloom", True)
-    bloom_blur_value = kwargs.get("bloom_blur_value", 10)
-    bloom_gain = kwargs.get("bloom_gain", 1)
-    apply_contrast = kwargs.get("apply_contrast", True)
-    contrast_gamma = kwargs.get("contrast_gamma", 0.2)
-    contrast_saturation = kwargs.get("contrast_saturation", 0.5)
-    apply_sharpness = kwargs.get("apply_sharpness", True)
-    kernel_size_sharpness = kwargs.get("kernel_size_sharpness", 5)
-    sigma_sharpness = kwargs.get("sigma_sharpness", 1.0)
-    amount_sharpness = kwargs.get("amount_sharpness", 1.0)
-    threshold_sharpness = kwargs.get("threshold_sharpness", 0)
-    only_dog = kwargs.get("only_dog", False)
-    only_sobel = kwargs.get("only_sobel", False)
+    # Use the PARAMETERS dictionary to set default values
+    for key, value in DEFAULT_PARAMETERS.items():
+        kwargs.setdefault(key, value)
+
+    # Retrieve values from kwargs
+    max_dimension = kwargs.get("max_dimension")
+    text_resolution = kwargs.get("text_resolution")
+    
+    apply_clahe = kwargs.get("apply_clahe")
+    clahe_clip_limit = kwargs.get("clahe_clip_limit")
+
+    get_fill = kwargs.get("get_fill")
+    get_edges = kwargs.get("get_edges")
+
+    sigma_dog = kwargs.get("sigma_dog")
+    sigma_factor = kwargs.get("sigma_factor")
+    kernel_factor_dog = kwargs.get("kernel_factor_dog")
+    tau_dog = kwargs.get("tau_dog")
+    
+    contrast_threshold_dog = kwargs.get("contrast_threshold_dog")
+    apply_normalize = kwargs.get("apply_normalize")
+    
+    apply_threshold = kwargs.get("apply_threshold")
+
+    kernel_size_sobel = kwargs.get("kernel_size_sobel")
+
+    histogram_threshold_sobel = kwargs.get("histogram_threshold_sobel")
+    edge_angle_tolerance = kwargs.get("edge_angle_tolerance")
+
+    apply_colour = kwargs.get("apply_colour")
+    colour_map = kwargs.get("colour_map")
+
+    apply_bloom = kwargs.get("apply_bloom")
+    bloom_blur_value = kwargs.get("bloom_blur_value")
+    bloom_gain = kwargs.get("bloom_gain")
+
+    apply_contrast = kwargs.get("apply_contrast")
+    contrast_gamma = kwargs.get("contrast_gamma")
+    contrast_saturation = kwargs.get("contrast_saturation")
+
+    apply_sharpness = kwargs.get("apply_sharpness")
+    kernel_size_sharpness = kwargs.get("kernel_size_sharpness")
+    sigma_sharpness = kwargs.get("sigma_sharpness")
+    amount_sharpness = kwargs.get("amount_sharpness")
+    threshold_sharpness = kwargs.get("threshold_sharpness")
+
+    apply_neon = kwargs.get("apply_neon")
+    neon_base_color = kwargs.get("neon_base_color")
+
+    only_dog = kwargs.get("only_dog")
+    only_sobel = kwargs.get("only_sobel")
 
     # Open the image and convert to grayscale
     input_image = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
@@ -50,8 +70,12 @@ def ascii_filter(filename, **kwargs):
         raise ValueError(f"Could not open or find the image '{filename}'")
 
     start_time = time.time()
-
-    input_image = downscale_image(input_image, max_dimension)
+    
+    image = downscale_image(input_image, max_dimension)
+    
+    if apply_clahe:
+        clahe = cv2.createCLAHE(clipLimit=clahe_clip_limit, tileGridSize=(4, 4))
+        image = clahe.apply(image)
 
     ascii_fill_img, ascii_edge_img = None, None
 
@@ -59,6 +83,7 @@ def ascii_filter(filename, **kwargs):
         # Create ASCII fill image
         ascii_fill_img = create_ascii_fill_image(input_image, text_resolution)
         image = ascii_fill_img
+        neon_base = image
 
     if get_edges:
         dog = diff_of_gaussiian(
@@ -67,10 +92,8 @@ def ascii_filter(filename, **kwargs):
             sigma_factor,
             kernel_factor_dog,
             tau_dog,
-            clahe_clip_limit,
             contrast_threshold_dog,
             apply_normalize,
-            apply_clahe,
             apply_threshold,
         )
         sobel_magnitude, sobel_angle = sobel_filter(dog, kernel_size_sobel)
@@ -84,6 +107,7 @@ def ascii_filter(filename, **kwargs):
             edge_angle_tolerance,
         )
         image = ascii_edge_img
+        neon_base = image
 
     if not get_fill and not get_edges:
         if only_dog:
@@ -93,16 +117,14 @@ def ascii_filter(filename, **kwargs):
                 sigma_factor,
                 kernel_factor_dog,
                 tau_dog,
-                clahe_clip_limit,
                 contrast_threshold_dog,
                 apply_normalize,
-                apply_clahe,
                 apply_threshold,
             )
         elif only_sobel:
             image, _ = sobel_filter(input_image, kernel_size_sobel)
 
-        else:
+        elif only_dog and only_sobel:
             image = diff_of_gaussiian(
                 input_image,
                 sigma_dog,
@@ -116,6 +138,8 @@ def ascii_filter(filename, **kwargs):
                 apply_threshold,
             )
             image, _ = sobel_filter(image, kernel_size_sobel)
+        else:
+            image = image
 
     if get_fill and get_edges:
         image = combine_fill_edges(
@@ -123,9 +147,10 @@ def ascii_filter(filename, **kwargs):
             ascii_edge_img=ascii_edge_img,
             text_resolution=text_resolution,
         )
+        neon_base = image
 
     if apply_colour:
-        image = add_color(image, colour_map)
+        image, base_colour = add_color(image, colour_map)
 
     if apply_bloom:
         image = add_bloom(image, bloom_blur_value, bloom_gain)
@@ -141,6 +166,12 @@ def ascii_filter(filename, **kwargs):
             amount_sharpness,
             threshold_sharpness,
         )
+    if apply_neon:
+        if isinstance(neon_base_color, str) and neon_base_color == "white":
+            neon_color = (255, 255, 255)
+        else:
+            neon_color = base_colour
+        image = add_neon(image, neon_base, neon_color)
 
     end_time = time.time()
     print(f"Processing time for '{'f'}': {end_time - start_time:.2f} seconds")
@@ -216,10 +247,8 @@ def diff_of_gaussiian(
     sigma_factor,
     kernel_factor_dog,
     tau_dog,
-    clahe_clip_limit,
     contrast_threshold_dog,
-    apply_normalize,
-    apply_clahe,
+    apply_normalize,    
     apply_threshold,
 ):
     # Sigm1 1 for dog
@@ -254,17 +283,13 @@ def diff_of_gaussiian(
         dog_normalized = cv2.normalize(dog, None, 0, 255, cv2.NORM_MINMAX)
         dog = np.uint8(dog_normalized)
 
-    if apply_clahe:
-        # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-        clahe = cv2.createCLAHE(clipLimit=clahe_clip_limit, tileGridSize=(8, 8))
-        dog = clahe.apply(dog)
+    
 
     if apply_threshold:
         thresh = contrast_threshold_dog  # Define the threshold value
         dog = np.where(dog > thresh, 255.0, 0.0)  # Apply the threshold
 
     # Display the results
-
     return dog
 
 
@@ -323,15 +348,15 @@ def create_ascii_edge_image(
         angle_tolerance = edge_angle_tolerance
         abstheta = np.abs(theta)
         if (
-            0.0 <= abstheta < 0.0 + angle_tolerance
-            or 180 - angle_tolerance <= abstheta <= 180.0
+            0.0 <= abstheta < (0.0 + angle_tolerance)
+            or (180 - angle_tolerance) <= abstheta <= 180.0
         ):
             return 1  # VERTICAL
-        elif 90 - angle_tolerance <= abstheta < 90 + angle_tolerance:
+        elif (90 - angle_tolerance) <= abstheta < (90 + angle_tolerance):
             return 2  # HORIZONTAL
-        elif 0.0 + angle_tolerance <= abstheta < 90 - angle_tolerance:
+        elif (0.0 + angle_tolerance) <= abstheta < (90 - angle_tolerance):
             return 3 if np.sign(theta) > 0 else 4  # DIAGONAL 1
-        elif 90 + angle_tolerance < abstheta < 180 - angle_tolerance:
+        elif (90 + angle_tolerance) < abstheta < (180 - angle_tolerance):
             return 4 if np.sign(theta) > 0 else 3  # DIAGONAL 2
 
     # Vectorize the threshold function for efficient element-wise processing
@@ -431,11 +456,11 @@ def add_color(image, color_map):
     # Create an RGB image array with the same height and width as the grayscale image
     color_image = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
 
-    # Map black (0) to green and white (255) to pink
+    # Map black (0) and white (255)
     color_image[image == 0] = hex_to_bgr(colour_map_hex[color_map][0])
     color_image[image == 255] = hex_to_bgr(colour_map_hex[color_map][1])
-
-    return color_image
+    base_colour = hex_to_bgr(colour_map_hex[color_map][1])
+    return color_image, base_colour
 
 
 def add_bloom(image, bloom_blur_value, bloom_gain):
@@ -493,8 +518,9 @@ def add_sharpness(
     return sharpened
 
 
-def add_neon(image):
-    pass
+def add_neon(image, neon_base, neon_color):
+    image[neon_base == 255] = neon_color
+    return image
 
 
 def add_depth(image):
@@ -639,6 +665,7 @@ def process_image(image_path, output_dir="output", affix="-ascii", **kwargs):
 
     return output_path
 
+
 # TODO ADD VIDEO Processing
 def process_video_file(input_video_path, output_video_filename, **kwargs):
     """
@@ -769,12 +796,13 @@ def process_input(input_path, save, show, **kwargs):
 
 
 if __name__ == "__main__":
-
+    """TESTING VALUES
+    """
     process_input(
-        input_path="images/img.png",
-        save=False,
-        show=True,
-        max_dimension=1920,
+        input_path=r"images\alex-shuper-IH82j6ZqtJA-unsplash.jpg",
+        save=True,
+        show=False,
+        max_dimension=2000,
         text_resolution=8,
         get_fill=True,
         get_edges=True,
@@ -790,17 +818,19 @@ if __name__ == "__main__":
         kernel_size_sobel=7,
         apply_colour=True,
         colour_map="black-white",
-        apply_bloom=False,
+        apply_bloom=True,
         bloom_blur_value=10,
         bloom_gain=1,
-        apply_contrast=False,
+        apply_contrast=True,
         contrast_gamma=0.2,
         contrast_saturation=0.5,
-        apply_sharpness=False,
+        apply_sharpness=True,
         kernel_size_sharpness=5,
         sigma_sharpness=1.0,
         amount_sharpness=1.0,
         threshold_sharpness=0,
+        apply_neon=True,
+        neon_base="white",
         only_dog=False,  # Set to True to only get the DoG image, must set fill and edge to False
         only_sobel=False,  # Set to True to only get the Sobel image, must set fill and edge to False
     )
